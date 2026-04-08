@@ -161,6 +161,10 @@ export interface AirfoilState {
   solverMode: SolverMode;
   /** Reynolds number constraint type (Mode 1/2/3) */
   reType: ReType;
+  /** Forced transition x/c on upper surface (1.0 = free transition) */
+  xstripUpper: number;
+  /** Forced transition x/c on lower surface (1.0 = free transition) */
+  xstripLower: number;
   /** Polar sweep data — multiple series keyed by solver config */
   polarData: PolarSeries[];
   /** Spacing panel mode: simple (curvature-based) or advanced (SSP) */
