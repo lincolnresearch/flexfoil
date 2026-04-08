@@ -29,6 +29,29 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.4',
+    date: '2026-04-08',
+    items: [
+      { category: 'added', text: 'Forced transition (trip strips) — set Trip Upper and Trip Lower in the Solve panel to force laminar-to-turbulent transition at a specific chord location (XFOIL\'s XSTRIP equivalent)' },
+      { category: 'added', text: 'Python API: xstrip_upper and xstrip_lower parameters on solve(), polar(), and bl_distribution() — default 1.0 (free transition)' },
+      { category: 'changed', text: 'If natural e^N transition occurs before the forced location, natural transition wins — matching XFOIL behaviour' },
+    ],
+    tourSlides: [
+      {
+        title: 'Forced Transition',
+        description: 'Simulate trip strips by forcing boundary layer transition at a specific chord location',
+        icon: '📍',
+        items: [
+          'Trip Upper / Trip Lower: set x/c position (0–1) where transition is forced',
+          'Default 1.0 = free transition (e^N method only)',
+          'If natural transition occurs earlier, it takes precedence',
+          'Equivalent to XFOIL\'s XSTRIP command in the VPAR menu',
+        ],
+        goTo: { panel: 'solve', label: 'Open Solve panel' },
+      },
+    ],
+  },
+  {
     version: '1.1.3',
     date: '2026-03-23',
     items: [
