@@ -8,6 +8,8 @@ def analyze_faithful(
     ncrit: float = 9.0,
     max_iterations: int = 100,
     re_type: int = 1,
+    xstrip_upper: float = 1.0,
+    xstrip_lower: float = 1.0,
 ) -> dict[str, object]:
     """Viscous (XFOIL-faithful) analysis at a single operating point."""
     ...
@@ -53,6 +55,8 @@ def analyze_faithful_batch(
     ncrit: float = 9.0,
     max_iterations: int = 100,
     re_type: int = 1,
+    xstrip_upper: float = 1.0,
+    xstrip_lower: float = 1.0,
 ) -> list[dict[str, object]]:
     """Batch viscous analysis: solve multiple alphas in parallel via rayon."""
     ...
@@ -76,6 +80,8 @@ def get_bl_distribution(
     ncrit: float = 9.0,
     max_iterations: int = 100,
     re_type: int = 1,
+    xstrip_upper: float = 1.0,
+    xstrip_lower: float = 1.0,
 ) -> dict[str, object]:
     """Compute boundary-layer distributions for a viscous operating point."""
     ...

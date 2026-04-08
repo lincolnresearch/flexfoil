@@ -208,6 +208,8 @@ class Airfoil:
         viscous: bool = True,
         store: bool = True,
         re_type: int = 1,
+        xstrip_upper: float = 1.0,
+        xstrip_lower: float = 1.0,
     ) -> SolveResult:
         """Run aerodynamic analysis at a single operating point.
 
@@ -220,11 +222,13 @@ class Airfoil:
         max_iter : maximum Newton iterations
         viscous : if False, run inviscid panel method only
         store : if True, cache result in the local database
+        xstrip_upper : forced transition x/c on upper surface (1.0 = free)
+        xstrip_lower : forced transition x/c on lower surface (1.0 = free)
         """
         coords = self._flat_panels()
 
         if viscous:
-            raw = analyze_faithful(coords, alpha, Re, mach, ncrit, max_iter, re_type)
+            raw = analyze_faithful(coords, alpha, Re, mach, ncrit, max_iter, re_type, xstrip_upper, xstrip_lower)
             # For viscous, also get Cp from inviscid pass
             raw_inv = analyze_inviscid(coords, alpha)
             result = SolveResult(
@@ -284,6 +288,8 @@ class Airfoil:
         store: bool = True,
         parallel: bool = True,
         re_type: int = 1,
+        xstrip_upper: float = 1.0,
+        xstrip_lower: float = 1.0,
     ) -> PolarResult | list[PolarResult]:
         """Run a polar sweep over angles of attack, optionally with matrix sweeps.
 
@@ -297,6 +303,8 @@ class Airfoil:
         viscous : if False, inviscid only
         store : if True, cache each point in the local database
         parallel : if True (default), solve all alphas in parallel via rayon
+        xstrip_upper : forced transition x/c on upper surface (1.0 = free)
+        xstrip_lower : forced transition x/c on lower surface (1.0 = free)
 
         Returns
         -------
@@ -329,6 +337,7 @@ class Airfoil:
                             Re=re_val, mach=mach_val, ncrit=ncrit_val,
                             max_iter=max_iter, viscous=viscous, store=store,
                             re_type=re_type,
+                            xstrip_upper=xstrip_upper, xstrip_lower=xstrip_lower,
                         )
                     else:
                         results = [
@@ -336,6 +345,7 @@ class Airfoil:
                                 a, Re=re_val, mach=mach_val, ncrit=ncrit_val,
                                 max_iter=max_iter, viscous=viscous, store=store,
                                 re_type=re_type,
+                                xstrip_upper=xstrip_upper, xstrip_lower=xstrip_lower,
                             )
                             for a in alphas
                         ]
@@ -361,6 +371,8 @@ class Airfoil:
         viscous: bool,
         store: bool,
         re_type: int = 1,
+        xstrip_upper: float = 1.0,
+        xstrip_lower: float = 1.0,
     ) -> list[SolveResult]:
         """Solve all alphas in a single parallel Rust call."""
         coords = self._flat_panels()
@@ -368,7 +380,7 @@ class Airfoil:
         if viscous:
             from flexfoil._rustfoil import analyze_faithful_batch
 
-            raw_list = analyze_faithful_batch(coords, alphas, Re, mach, ncrit, max_iter, re_type)
+            raw_list = analyze_faithful_batch(coords, alphas, Re, mach, ncrit, max_iter, re_type, xstrip_upper, xstrip_lower)
             results = [
                 SolveResult(
                     cl=raw.get("cl", 0.0),
@@ -429,6 +441,8 @@ class Airfoil:
         ncrit: float = 9.0,
         max_iter: int = 100,
         re_type: int = 1,
+        xstrip_upper: float = 1.0,
+        xstrip_lower: float = 1.0,
     ) -> BLResult:
         """Compute boundary-layer distributions (viscous only).
 
@@ -436,7 +450,7 @@ class Airfoil:
         theta, H, and ue for upper and lower surfaces.
         """
         coords = self._flat_panels()
-        raw = get_bl_distribution(coords, alpha, Re, mach, ncrit, max_iter, re_type)
+        raw = get_bl_distribution(coords, alpha, Re, mach, ncrit, max_iter, re_type, xstrip_upper, xstrip_lower)
 
         if not raw.get("success", False):
             return BLResult(

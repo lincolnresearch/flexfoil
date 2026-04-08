@@ -407,6 +407,71 @@ class TestReType:
 
 
 # ---------------------------------------------------------------------------
+# Forced transition (XSTRIP)
+# ---------------------------------------------------------------------------
+
+class TestForcedTransition:
+    def test_solve_forced_upper(self):
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        r = foil.solve(5.0, Re=1e6, xstrip_upper=0.3, store=False)
+        assert r.success
+        assert r.x_tr_upper < 0.35, f"Expected x_tr_upper near 0.3, got {r.x_tr_upper}"
+
+    def test_solve_forced_lower(self):
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        r = foil.solve(5.0, Re=1e6, xstrip_lower=0.4, store=False)
+        assert r.success
+        assert r.x_tr_lower < 0.45, f"Expected x_tr_lower near 0.4, got {r.x_tr_lower}"
+
+    def test_forced_moves_transition_earlier(self):
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        r_free = foil.solve(5.0, Re=1e6, store=False)
+        r_forced = foil.solve(5.0, Re=1e6, xstrip_upper=0.1, store=False)
+        assert r_free.success and r_forced.success
+        assert r_forced.x_tr_upper < r_free.x_tr_upper, \
+            f"Forced transition ({r_forced.x_tr_upper}) should be earlier than free ({r_free.x_tr_upper})"
+
+    def test_default_xstrip_no_regression(self):
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        r1 = foil.solve(5.0, Re=1e6, store=False)
+        r2 = foil.solve(5.0, Re=1e6, xstrip_upper=1.0, xstrip_lower=1.0, store=False)
+        assert abs(r1.cl - r2.cl) < 1e-10
+        assert abs(r1.cd - r2.cd) < 1e-10
+
+    def test_polar_forced_transition(self):
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        polar = foil.polar(alpha=[3.0, 5.0], Re=1e6, xstrip_upper=0.2, store=False)
+        for r in polar.converged:
+            assert r.x_tr_upper < 0.25, f"Expected forced xtr < 0.25, got {r.x_tr_upper}"
+
+    def test_batch_forced_matches_sequential(self):
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        par = foil.polar(alpha=[3.0, 5.0], Re=1e6, xstrip_upper=0.3,
+                         parallel=True, store=False)
+        seq = foil.polar(alpha=[3.0, 5.0], Re=1e6, xstrip_upper=0.3,
+                         parallel=False, store=False)
+        for p, s in zip(par.converged, seq.converged):
+            assert abs(p.cl - s.cl) < 1e-10
+            assert abs(p.x_tr_upper - s.x_tr_upper) < 1e-10
+
+    def test_forced_changes_cd(self):
+        """Forcing transition earlier should increase drag."""
+        import flexfoil
+        foil = flexfoil.naca("2412")
+        r_free = foil.solve(5.0, Re=1e6, store=False)
+        r_forced = foil.solve(5.0, Re=1e6, xstrip_upper=0.05, xstrip_lower=0.05, store=False)
+        assert r_free.success and r_forced.success
+        assert r_forced.cd > r_free.cd, \
+            f"Forced early transition cd ({r_forced.cd}) should exceed free ({r_free.cd})"
+
+
+# ---------------------------------------------------------------------------
 # Matrix sweep (multi-Re)
 # ---------------------------------------------------------------------------
 

@@ -20,9 +20,11 @@ pub fn setbl(
     ncrit: f64,
     mach: f64,
     iteration: usize,
+    xstrip_upper: f64,
+    xstrip_lower: f64,
 ) -> AssemblyState {
     if !state.lblini {
-        mrchue(state, reynolds, ncrit, iteration);
+        mrchue(state, reynolds, ncrit, iteration, xstrip_upper, xstrip_lower);
         if std::env::var("RUSTFOIL_SETBL_HANDOFF_DEBUG").is_ok() {
             let start = state.nbl_upper.saturating_sub(3);
             for ibl in start..state.nbl_upper {
@@ -42,7 +44,7 @@ pub fn setbl(
             }
         }
     }
-    mrchdu(state, reynolds, ncrit, iteration);
+    mrchdu(state, reynolds, ncrit, iteration, xstrip_upper, xstrip_lower);
 
     // XFOIL re-enters SETBL with MASS coherent to the current BL state.
     // Keep the row cache aligned before building canonical stations or the
@@ -215,6 +217,17 @@ pub fn setbl(
         state.iblte_lower,
     );
     system.ante = state.ante;
+    // Set user-specified forced transition locations (converted from xstrip to arc-length)
+    system.xiforc_upper = if xstrip_upper < 1.0 - 1e-9 {
+        Some(crate::march::xstrip_to_xiforc_rows(upper_rows, state.iblte_upper, xstrip_upper))
+    } else {
+        None
+    };
+    system.xiforc_lower = if xstrip_lower < 1.0 - 1e-9 {
+        Some(crate::march::xstrip_to_xiforc_rows(lower_rows, state.iblte_lower, xstrip_lower))
+    } else {
+        None
+    };
     system.set_stagnation_derivs(state.sst_go, state.sst_gp);
     system.build_global_system(
         &upper_stations,

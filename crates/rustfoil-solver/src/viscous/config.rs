@@ -76,6 +76,14 @@ pub struct ViscousSolverConfig {
 
     /// Global operating-variable mode used by the Newton/update loop.
     pub operating_mode: OperatingMode,
+
+    /// Forced transition location on upper surface as x/c fraction (0–1).
+    /// Default 1.0 means no forced transition (use e^N method only).
+    pub xstrip_upper: f64,
+
+    /// Forced transition location on lower surface as x/c fraction (0–1).
+    /// Default 1.0 means no forced transition (use e^N method only).
+    pub xstrip_lower: f64,
 }
 
 impl Default for ViscousSolverConfig {
@@ -91,6 +99,8 @@ impl Default for ViscousSolverConfig {
             hk_max_turbulent: 2.5,
             allow_separation: true,
             operating_mode: OperatingMode::PrescribedAlpha,
+            xstrip_upper: 1.0,
+            xstrip_lower: 1.0,
         }
     }
 }

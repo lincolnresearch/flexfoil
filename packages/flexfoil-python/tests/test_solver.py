@@ -461,6 +461,54 @@ class TestReType:
         assert result["converged"]
 
 
+class TestForcedTransition:
+    """Tests for forced transition (XSTRIP) at the Rust binding level."""
+
+    def _make_coords(self):
+        raw = generate_naca4(2412)
+        flat = [v for x, y in raw for v in (x, y)]
+        paneled = repanel_xfoil(flat, 160)
+        return [v for x, y in paneled for v in (x, y)]
+
+    def test_forced_upper_moves_transition(self):
+        coords = self._make_coords()
+        r_free = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100)
+        r_forced = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100, 1, 0.1, 1.0)
+        assert r_free["success"] and r_forced["success"]
+        assert r_forced["x_tr_upper"] < r_free["x_tr_upper"]
+
+    def test_forced_lower_moves_transition(self):
+        coords = self._make_coords()
+        r_free = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100)
+        r_forced = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100, 1, 1.0, 0.2)
+        assert r_free["success"] and r_forced["success"]
+        assert r_forced["x_tr_lower"] < r_free["x_tr_lower"]
+
+    def test_default_xstrip_unchanged(self):
+        coords = self._make_coords()
+        r1 = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100)
+        r2 = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100, 1, 1.0, 1.0)
+        assert abs(r1["cl"] - r2["cl"]) < 1e-10
+        assert abs(r1["cd"] - r2["cd"]) < 1e-10
+
+    def test_forced_transition_increases_drag(self):
+        coords = self._make_coords()
+        r_free = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100)
+        r_forced = analyze_faithful(coords, 5.0, 1e6, 0.0, 9.0, 100, 1, 0.05, 0.05)
+        assert r_free["success"] and r_forced["success"]
+        assert r_forced["cd"] > r_free["cd"]
+
+    def test_batch_forced_matches_single(self):
+        from flexfoil._rustfoil import analyze_faithful_batch
+        coords = self._make_coords()
+        alphas = [3.0, 5.0]
+        batch = analyze_faithful_batch(coords, alphas, 1e6, 0.0, 9.0, 100, 1, 0.3, 1.0)
+        singles = [analyze_faithful(coords, a, 1e6, 0.0, 9.0, 100, 1, 0.3, 1.0) for a in alphas]
+        for b, s in zip(batch, singles):
+            assert abs(b["cl"] - s["cl"]) < 1e-10
+            assert abs(b["x_tr_upper"] - s["x_tr_upper"]) < 1e-10
+
+
 class TestInviscidBatch:
     def _make_coords(self):
         raw = generate_naca4(2412)

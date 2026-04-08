@@ -67,7 +67,7 @@ export function buildSearchIndex(deps: {
       label: 'Properties',
       description: 'Reynolds, Mach, Ncrit, solver settings',
       category: 'panel',
-      keywords: ['Reynolds', 'Mach', 'ncrit', 'solver', 'settings', 'viscous', 'inviscid', 'parameters', 'flight conditions', 'Re', 'properties', 'configuration'],
+      keywords: ['Reynolds', 'Mach', 'ncrit', 'solver', 'settings', 'viscous', 'inviscid', 'parameters', 'flight conditions', 'Re', 'properties', 'configuration', 'xstrip', 'trip', 'forced transition'],
       panelId: 'properties',
     },
     {
@@ -75,7 +75,7 @@ export function buildSearchIndex(deps: {
       label: 'Solve',
       description: 'Run single-point or polar sweep analysis',
       category: 'panel',
-      keywords: ['run', 'solve', 'compute', 'analyze', 'alpha', 'angle of attack', 'sweep', 'converge', 'calculate', 'simulation'],
+      keywords: ['run', 'solve', 'compute', 'analyze', 'alpha', 'angle of attack', 'sweep', 'converge', 'calculate', 'simulation', 'trip', 'xstrip', 'forced transition'],
       panelId: 'solve',
     },
     {

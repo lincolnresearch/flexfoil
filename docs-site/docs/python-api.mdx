@@ -157,6 +157,25 @@ print(result.reynolds_eff)  # effective Re after Mode 2 adjustment
 polar = foil.polar(alpha=(-5, 15, 0.5), Re=1e6, re_type=2)
 ```
 
+### Forced transition (trip strips)
+
+Force the boundary layer to transition at a specific chord location,
+regardless of the e^N criterion. This is equivalent to XFOIL's `XSTRIP`
+command (VPAR menu). Default is `1.0` (no forced transition — use e^N only).
+
+```python
+# Force transition at 5% chord on both surfaces (simulating trip strips)
+result = foil.solve(alpha=5.0, Re=1e6, xstrip_upper=0.05, xstrip_lower=0.05)
+print(result.x_tr_upper)  # ≈ 0.05
+print(result.x_tr_lower)  # ≈ 0.05
+
+# Force upper only — lower uses natural (e^N) transition
+polar = foil.polar(alpha=(-5, 15, 0.5), Re=1e6, xstrip_upper=0.1)
+```
+
+If the natural (e^N) transition occurs before the forced location, natural
+transition wins — matching XFOIL's behaviour.
+
 ### Inviscid analysis
 
 ```python
@@ -260,9 +279,9 @@ are byte-identical.
 | `.panel_coords` | Repaneled coordinates `list[(x, y)]` |
 | `.hash` | SHA-256 hash of panel coords (cache key) |
 | `.with_flap(hinge_x, deflection, hinge_y_frac, n_panels)` | Return new Airfoil with flap deflected |
-| `.solve(alpha, Re, mach, ncrit, max_iter, viscous, store, re_type)` | Single-point analysis (`re_type`: 1, 2, or 3) |
-| `.polar(alpha, Re, mach, ncrit, max_iter, viscous, store, parallel, re_type)` | Sweep over alpha range (parallel by default) |
-| `.bl_distribution(alpha, Re, mach, ncrit, max_iter, re_type)` | Boundary-layer distributions (viscous only) |
+| `.solve(alpha, Re, mach, ncrit, max_iter, viscous, store, re_type, xstrip_upper, xstrip_lower)` | Single-point analysis |
+| `.polar(alpha, Re, mach, ncrit, max_iter, viscous, store, parallel, re_type, xstrip_upper, xstrip_lower)` | Sweep over alpha range (parallel by default) |
+| `.bl_distribution(alpha, Re, mach, ncrit, max_iter, re_type, xstrip_upper, xstrip_lower)` | Boundary-layer distributions (viscous only) |
 
 ### SolveResult
 

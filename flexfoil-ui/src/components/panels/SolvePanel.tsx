@@ -63,6 +63,10 @@ export function SolvePanel() {
     setSolverMode,
     reType,
     setReType,
+    xstripUpper,
+    xstripLower,
+    setXstripUpper,
+    setXstripLower,
     upsertPolar,
     clearAllPolars,
   } = useAirfoilStore();
@@ -180,10 +184,10 @@ export function SolvePanel() {
 
   const runSolver = useCallback((coords: { x: number; y: number }[], alpha: number) => {
     if (isViscous) {
-      return analyzeAirfoil(coords, alpha, reynolds, mach, ncrit, maxIterations, reType);
+      return analyzeAirfoil(coords, alpha, reynolds, mach, ncrit, maxIterations, reType, xstripUpper, xstripLower);
     }
     return analyzeAirfoilInviscid(coords, alpha);
-  }, [isViscous, reynolds, mach, ncrit, maxIterations, reType]);
+  }, [isViscous, reynolds, mach, ncrit, maxIterations, reType, xstripUpper, xstripLower]);
 
   /** Cache key uses Re=0/Mach=0/Ncrit=0/maxIter=0 for inviscid to separate caches. */
   const cacheRe = isViscous ? reynolds : 0;
@@ -965,6 +969,32 @@ export function SolvePanel() {
                     step={0.5}
                     min={1}
                     max={14}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    Trip Upper (x/c)
+                  </label>
+                  <input
+                    type="number"
+                    value={xstripUpper}
+                    onChange={(e) => setXstripUpper(Math.max(0, Math.min(1, parseFloat(e.target.value) || 1)))}
+                    step={0.05}
+                    min={0}
+                    max={1}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    Trip Lower (x/c)
+                  </label>
+                  <input
+                    type="number"
+                    value={xstripLower}
+                    onChange={(e) => setXstripLower(Math.max(0, Math.min(1, parseFloat(e.target.value) || 1)))}
+                    step={0.05}
+                    min={0}
+                    max={1}
                   />
                 </div>
                 <div>

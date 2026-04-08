@@ -43,7 +43,7 @@ fn flat_from_points(pts: &[Point]) -> Vec<(f64, f64)> {
 /// Returns a dict with keys: cl, cd, cm, converged, iterations, residual,
 /// x_tr_upper, x_tr_lower, cd_friction, cd_pressure, alpha_deg, success, error.
 #[pyfunction]
-#[pyo3(signature = (coords, alpha_deg, reynolds=1.0e6, mach=0.0, ncrit=9.0, max_iterations=100, re_type=1))]
+#[pyo3(signature = (coords, alpha_deg, reynolds=1.0e6, mach=0.0, ncrit=9.0, max_iterations=100, re_type=1, xstrip_upper=1.0, xstrip_lower=1.0))]
 fn analyze_faithful(
     py: Python<'_>,
     coords: Vec<f64>,
@@ -53,6 +53,8 @@ fn analyze_faithful(
     ncrit: f64,
     max_iterations: usize,
     re_type: u8,
+    xstrip_upper: f64,
+    xstrip_lower: f64,
 ) -> PyResult<Py<PyDict>> {
     if coords.len() < 6 || coords.len() % 2 != 0 {
         let d = PyDict::new(py);
@@ -78,6 +80,8 @@ fn analyze_faithful(
         ncrit,
         max_iterations,
         re_type: re_type_from_int(re_type),
+        xstrip_upper,
+        xstrip_lower,
         ..Default::default()
     };
 
@@ -291,7 +295,7 @@ fn faithful_result_to_pydict(py: Python<'_>, r: &FaithfulResult) -> PyResult<Py<
 ///
 /// Returns a list of dicts (same schema as analyze_faithful), one per alpha.
 #[pyfunction]
-#[pyo3(signature = (coords, alphas, reynolds=1.0e6, mach=0.0, ncrit=9.0, max_iterations=100, re_type=1))]
+#[pyo3(signature = (coords, alphas, reynolds=1.0e6, mach=0.0, ncrit=9.0, max_iterations=100, re_type=1, xstrip_upper=1.0, xstrip_lower=1.0))]
 fn analyze_faithful_batch(
     py: Python<'_>,
     coords: Vec<f64>,
@@ -301,6 +305,8 @@ fn analyze_faithful_batch(
     ncrit: f64,
     max_iterations: usize,
     re_type: u8,
+    xstrip_upper: f64,
+    xstrip_lower: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
     let err_msg = if coords.len() < 6 || coords.len() % 2 != 0 {
         Some("Invalid coordinates".to_string())
@@ -343,6 +349,7 @@ fn analyze_faithful_batch(
     let options = XfoilOptions {
         reynolds, mach, ncrit, max_iterations,
         re_type: re_type_from_int(re_type),
+        xstrip_upper, xstrip_lower,
         ..Default::default()
     };
 
@@ -440,7 +447,7 @@ fn analyze_inviscid_batch(
 /// ue_upper, ue_lower, x_tr_upper, x_tr_lower, converged, iterations,
 /// residual, success, error.
 #[pyfunction]
-#[pyo3(signature = (coords, alpha_deg, reynolds=1.0e6, mach=0.0, ncrit=9.0, max_iterations=100, re_type=1))]
+#[pyo3(signature = (coords, alpha_deg, reynolds=1.0e6, mach=0.0, ncrit=9.0, max_iterations=100, re_type=1, xstrip_upper=1.0, xstrip_lower=1.0))]
 fn get_bl_distribution(
     py: Python<'_>,
     coords: Vec<f64>,
@@ -450,6 +457,8 @@ fn get_bl_distribution(
     ncrit: f64,
     max_iterations: usize,
     re_type: u8,
+    xstrip_upper: f64,
+    xstrip_lower: f64,
 ) -> PyResult<Py<PyDict>> {
     use rustfoil_xfoil::oper::{build_state_from_coords, solve_operating_point_from_state, coords_from_body, AlphaSpec};
     use rustfoil_xfoil::XfoilOptions;
@@ -476,6 +485,7 @@ fn get_bl_distribution(
     let options = XfoilOptions {
         reynolds, mach, ncrit, max_iterations,
         re_type: re_type_from_int(re_type),
+        xstrip_upper, xstrip_lower,
         ..Default::default()
     };
 

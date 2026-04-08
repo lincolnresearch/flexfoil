@@ -131,6 +131,20 @@ for defl in [0, 5, 10, 15]:
     polar = f.polar(alpha=(-4, 14, 1.0), Re=1e6)
 ```
 
+### Forced transition (trip strips)
+
+Force the boundary layer to transition at a specific chord location,
+equivalent to XFOIL's `XSTRIP` (VPAR menu). Default `1.0` = free transition.
+
+```python
+# Trip strips at 5% chord on both surfaces
+result = foil.solve(alpha=5.0, Re=1e6, xstrip_upper=0.05, xstrip_lower=0.05)
+print(result.x_tr_upper)  # ≈ 0.05
+
+# Force upper only — lower uses natural (e^N) transition
+polar = foil.polar(alpha=(-5, 15, 0.5), Re=1e6, xstrip_upper=0.1)
+```
+
 ### Inviscid analysis
 
 ```python
@@ -201,8 +215,8 @@ flexfoil info                        # show config and DB location
 | `.panel_coords` | Repaneled coordinates `list[(x, y)]` |
 | `.hash` | SHA-256 hash of panel coords (cache key) |
 | `.with_flap(hinge_x, deflection, hinge_y_frac, n_panels)` | Return new Airfoil with flap deflected |
-| `.solve(alpha, Re, mach, ncrit, max_iter, viscous, store)` | Single-point analysis |
-| `.polar(alpha, Re, mach, ncrit, max_iter, viscous, store, parallel)` | Sweep over alpha range (parallel by default) |
+| `.solve(alpha, Re, mach, ncrit, max_iter, viscous, store, re_type, xstrip_upper, xstrip_lower)` | Single-point analysis |
+| `.polar(alpha, Re, mach, ncrit, max_iter, viscous, store, parallel, re_type, xstrip_upper, xstrip_lower)` | Sweep over alpha range (parallel by default) |
 
 ### `SolveResult`
 
