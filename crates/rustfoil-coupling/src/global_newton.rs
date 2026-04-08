@@ -138,6 +138,11 @@ pub struct GlobalNewtonSystem {
     pub current_iteration: usize,
     /// ANTE: base thickness contribution at blunt trailing edge (XFOIL WGAP(1))
     pub ante: f64,
+    /// Forced transition arc-length on upper surface (from XSTRIP).
+    /// `None` falls back to TE arc length (default XFOIL behaviour).
+    pub xiforc_upper: Option<f64>,
+    /// Forced transition arc-length on lower surface (from XSTRIP).
+    pub xiforc_lower: Option<f64>,
 }
 
 impl GlobalNewtonSystem {
@@ -189,6 +194,8 @@ impl GlobalNewtonSystem {
             // Current iteration - set in build_global_system
             current_iteration: 0,
             ante: 0.0,
+            xiforc_upper: None,
+            xiforc_lower: None,
         }
     }
 
@@ -790,9 +797,9 @@ impl GlobalNewtonSystem {
             let is_transition_interval =
                 !s1.is_turbulent && !s1.is_wake && s2.is_turbulent && !s2.is_wake;
             let x_forced = if surface == 0 {
-                stations.get(self.iblte_upper).map(|s| s.x)
+                self.xiforc_upper.or_else(|| stations.get(self.iblte_upper).map(|s| s.x))
             } else {
-                stations.get(self.iblte_lower).map(|s| s.x)
+                self.xiforc_lower.or_else(|| stations.get(self.iblte_lower).map(|s| s.x))
             };
             let live_transition = if is_transition_interval {
                 Some(trchek2_full(

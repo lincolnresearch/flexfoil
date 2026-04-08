@@ -22,7 +22,7 @@ use nalgebra::DMatrix;
 use rayon::prelude::*;
 use rustfoil_bl::equations::{blvar, FlowType};
 use rustfoil_bl::state::BlStation;
-use rustfoil_coupling::march::{march_fixed_ue, MarchConfig, MarchResult};
+use rustfoil_coupling::march::{march_fixed_ue, xstrip_to_xiforc, MarchConfig, MarchResult};
 use rustfoil_coupling::global_newton::{
     apply_global_updates_from_view, preview_global_update_ue_from_view, solve_global_system, GlobalNewtonSystem,
 };
@@ -891,7 +891,7 @@ pub fn solve_viscous_two_surfaces(
         ));
     }
 
-    let march_config = MarchConfig {
+    let march_config_base = MarchConfig {
         ncrit: config.ncrit,
         hlmax: config.hk_max_laminar,
         htmax: config.hk_max_turbulent,
@@ -914,10 +914,24 @@ pub fn solve_viscous_two_surfaces(
     canonical_state.set_panel_inviscid_arrays(ue_inviscid_full, ue_inviscid_alpha_full);
     refresh_canonical_panel_arrays(&mut canonical_state);
 
+    // Compute per-surface forced transition arc-length from xstrip (XIFSET equivalent).
+    let xiforc_upper = if config.xstrip_upper < 1.0 - 1e-9 {
+        Some(xstrip_to_xiforc(upper_stations, config.xstrip_upper))
+    } else {
+        None
+    };
+    let xiforc_lower = if config.xstrip_lower < 1.0 - 1e-9 {
+        Some(xstrip_to_xiforc(lower_stations, config.xstrip_lower))
+    } else {
+        None
+    };
+
+    let upper_march_config = MarchConfig { xiforc: xiforc_upper, ..march_config_base.clone() };
+    let lower_march_config = MarchConfig { xiforc: xiforc_lower, ..march_config_base.clone() };
 
     // March upper surface (side 1) through the canonical state.
     let upper_result =
-        canonical_state.march_surface(XfoilSurface::Upper, re, msq, &march_config);
+        canonical_state.march_surface(XfoilSurface::Upper, re, msq, &upper_march_config);
 
     // Debug: Print march results
     if rustfoil_bl::is_debug_active() {
@@ -937,7 +951,7 @@ pub fn solve_viscous_two_surfaces(
 
     // March lower surface (side 2) through the canonical state.
     let lower_result =
-        canonical_state.march_surface(XfoilSurface::Lower, re, msq, &march_config);
+        canonical_state.march_surface(XfoilSurface::Lower, re, msq, &lower_march_config);
 
     // Debug: Print lower march results
     if rustfoil_bl::is_debug_active() {
@@ -1030,6 +1044,8 @@ pub fn solve_viscous_two_surfaces(
             let iblte_lower = canonical_state.iblte_lower;
             let mut global_system =
                 GlobalNewtonSystem::new(n_upper, n_lower, iblte_upper, iblte_lower);
+            global_system.xiforc_upper = xiforc_upper;
+            global_system.xiforc_lower = xiforc_lower;
 
             // ANTE: trailing edge gap thickness (XFOIL's WGAP(1) = DWTE).
             // For sharp TE airfoils this is zero; for blunt TE it's the gap.
@@ -1113,8 +1129,8 @@ pub fn solve_viscous_two_surfaces(
             // bubble and N-factor history across Newton iterations, unlike the
             // previous march_surface call which re-initialised from Thwaites.
 
-            canonical_state.march_mixed_du(XfoilSurface::Upper, re, msq, &march_config);
-            canonical_state.march_mixed_du(XfoilSurface::Lower, re, msq, &march_config);
+            canonical_state.march_mixed_du(XfoilSurface::Upper, re, msq, &upper_march_config);
+            canonical_state.march_mixed_du(XfoilSurface::Lower, re, msq, &lower_march_config);
             let upper_debug = canonical_state.upper_station_view();
             let lower_debug = canonical_state.lower_station_view();
 

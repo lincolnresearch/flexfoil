@@ -322,6 +322,8 @@ export function analyzeAirfoil(
     ncrit: number = 9,
     maxIterations: number = 100,
     reType: number = 1,
+    xstripUpper: number = 1.0,
+    xstripLower: number = 1.0,
 ): AnalysisResult {
     if (!initialized) {
         throw new Error('WASM not initialized. Call initWasm() first.');
@@ -336,6 +338,8 @@ export function analyzeAirfoil(
         ncrit,
         maxIterations,
         reType,
+        xstripUpper,
+        xstripLower,
     ) as AnalysisResult;
 }
 

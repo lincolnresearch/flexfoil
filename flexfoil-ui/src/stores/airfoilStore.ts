@@ -145,6 +145,8 @@ interface AirfoilStore extends AirfoilState {
   setMaxIterations: (maxIterations: number) => void;
   setSolverMode: (mode: SolverMode) => void;
   setReType: (reType: ReType) => void;
+  setXstripUpper: (xstripUpper: number) => void;
+  setXstripLower: (xstripLower: number) => void;
 
   // Point manipulation (legacy, kept for compatibility)
   updatePoint: (index: number, point: AirfoilPoint) => void;
@@ -291,6 +293,8 @@ export const useAirfoilStore = create<AirfoilStore>()(
       maxIterations: 100,
       solverMode: 'viscous',
       reType: 1 as ReType,
+      xstripUpper: 1.0,
+      xstripLower: 1.0,
       polarData: [],
       spacingPanelMode: 'simple',  // Default to simple curvature-based
       sspInterpolation: 'linear',  // Default to linear (Mark Drela's original)
@@ -320,6 +324,8 @@ export const useAirfoilStore = create<AirfoilStore>()(
       setMaxIterations: (maxIterations) => set({ maxIterations: Math.max(10, Math.min(500, maxIterations)) }),
       setSolverMode: (solverMode) => set({ solverMode }),
       setReType: (reType) => set({ reType }),
+      setXstripUpper: (xstripUpper) => set({ xstripUpper: Math.max(0, Math.min(1, xstripUpper)) }),
+      setXstripLower: (xstripLower) => set({ xstripLower: Math.max(0, Math.min(1, xstripLower)) }),
 
       updatePoint: (index, point) => set((state) => {
         const newCoords = [...state.coordinates];

@@ -385,7 +385,7 @@ pub fn rust_iteration_debug(alpha_deg: f64) -> serde_json::Value {
     let (mut state, _) = build_march_state(alpha_deg);
     blpini(&mut state, 1.0e6);
     init_debug(&debug_path);
-    let assembly = setbl(&mut state, 1.0e6, 9.0, 0.0, 1);
+    let assembly = setbl(&mut state, 1.0e6, 9.0, 0.0, 1, 1.0, 1.0);
     let mut assembly = assembly;
     let solve = blsolv(&mut state, &mut assembly, 1);
     update(&mut state, &assembly, &solve, 0.0, 1.0e6, 1);
@@ -608,14 +608,14 @@ pub fn build_march_state(alpha_deg: f64) -> (XfoilState, rustfoil_inviscid::Fact
 pub fn rust_setbl_state(alpha_deg: f64) -> FortranMarchState {
     let (mut state, _) = build_march_state(alpha_deg);
     blpini(&mut state, 1.0e6);
-    let _ = setbl(&mut state, 1.0e6, 9.0, 0.0, 1);
+    let _ = setbl(&mut state, 1.0e6, 9.0, 0.0, 1, 1.0, 1.0);
     march_state_snapshot(&state)
 }
 
 pub fn rust_mrchue_state(alpha_deg: f64) -> FortranMarchState {
     let (mut state, _) = build_march_state(alpha_deg);
     blpini(&mut state, 1.0e6);
-    mrchue(&mut state, 1.0e6, 9.0, 0);
+    mrchue(&mut state, 1.0e6, 9.0, 0, 1.0, 1.0);
     march_state_snapshot(&state)
 }
 

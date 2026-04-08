@@ -387,6 +387,10 @@ pub struct MarchConfig {
     pub deps: f64,
     /// Enable debug tracing output
     pub debug_trace: bool,
+    /// Forced transition arc-length location (XFOIL's XIFORC).
+    /// `None` means default behaviour: force transition at trailing edge only.
+    /// `Some(xi)` forces transition at the specified arc-length coordinate.
+    pub xiforc: Option<f64>,
 }
 
 impl Default for MarchConfig {
@@ -400,6 +404,7 @@ impl Default for MarchConfig {
             senswt: 1000.0,
             deps: 5.0e-6,
             debug_trace: false,
+            xiforc: None,
         }
     }
 }
@@ -420,6 +425,39 @@ impl MarchConfig {
             ..Default::default()
         }
     }
+}
+
+// ============================================================================
+// XSTRIP → XIFORC Conversion
+// ============================================================================
+
+/// Convert an XSTRIP value (x/c chord fraction, 0–1) to an arc-length
+/// coordinate (XIFORC) by interpolating the station arrays.
+///
+/// If `xstrip >= 1.0`, returns the arc-length of the last station (TE),
+/// matching XFOIL's default behaviour.  Stations must have `x` (arc length)
+/// and `x_coord` (physical x) populated.
+pub fn xstrip_to_xiforc(stations: &[BlStation], xstrip: f64) -> f64 {
+    let te_x = stations.last().map(|s| s.x).unwrap_or(1.0);
+    if xstrip >= 1.0 - 1e-9 || stations.len() < 2 {
+        return te_x;
+    }
+    // Walk downstream from stagnation (stations are ordered by arc length).
+    // On each surface x_coord increases monotonically from LE towards TE.
+    for i in 1..stations.len() {
+        let xc1 = stations[i - 1].x_coord;
+        let xc2 = stations[i].x_coord;
+        if (xc1 <= xstrip && xstrip <= xc2) || (xc2 <= xstrip && xstrip <= xc1) {
+            let dx = xc2 - xc1;
+            if dx.abs() < 1e-15 {
+                return stations[i - 1].x;
+            }
+            let frac = (xstrip - xc1) / dx;
+            return stations[i - 1].x + frac * (stations[i].x - stations[i - 1].x);
+        }
+    }
+    // Fallback: xstrip beyond the station range → TE
+    te_x
 }
 
 // ============================================================================
@@ -1787,11 +1825,10 @@ pub fn march_fixed_ue(
             config.tolerance,
             config.hlmax,
             config.htmax,
-            None,
+            config.xiforc,
             Some(0),
             Some(i),
         );
-        
 
         // If Newton didn't converge, use best estimate (station still has result)
         // Note: With tolerance=1e-5 (matching XFOIL), Newton should converge for normal cases
@@ -2139,118 +2176,144 @@ pub fn march_surface(
         // Do not clamp Hk here; inverse-mode handles near-separation behavior.
 
         // Check for transition (laminar only) using TRCHEK2 implicit integration
+        // Also check for user-specified forced transition (XSTRIP/XIFORC).
+        let x_forced = config.xiforc.filter(|&xi| xi < surface_te_x - 1e-9);
         if is_laminar && result.x_transition.is_none() {
-            let trchek_result = trchek2_stations(
-                prev_station.x,
-                station.x,
-                prev_station.hk,
-                prev_station.theta,
-                prev_station.r_theta,
-                prev_station.delta_star,
-                prev_station.u,
-                prev_station.ampl,
-                station.hk,
-                station.theta,
-                station.r_theta,
-                station.delta_star,
-                station.u,
-                config.ncrit,
-                msq,
-                re,
-            );
-            station.ampl = trchek_result.ampl2;
-            emit_trchek2_station_iter(
-                side,
-                station_idx + 2,
-                prev_station,
-                &station,
-                &trchek_result,
-                config.ncrit,
-            );
-
-            if config.debug_trace && station.ampl > 0.1 && station.ampl < 12.0 {
-                println!(
-                    "[march_surface] i={} x={:.4} Hk={:.3} Rθ={:.0} N={:.3} dN={:.4}",
-                    i,
-                    station.x,
-                    station.hk,
-                    station.r_theta,
-                    station.ampl,
-                    station.ampl - prev_station.ampl
-                );
-            }
-
-            // Check for transition via e^N method ONLY
-            // 
-            // IMPORTANT: XFOIL does NOT force transition when Hk exceeds a threshold.
-            // It only uses the e^N method (amplification exceeds Ncrit) for transition.
-            // When Hk exceeds hlmax, XFOIL switches to inverse mode to constrain H,
-            // but keeps the flow laminar unless N exceeds Ncrit.
-            //
-            // Previously, RustFoil had "separation-induced transition" that forced
-            // transition when Hk > 4.3. This was WRONG and caused premature transition,
-            // preventing proper stall prediction. High Hk values (4-10) are normal
-            // during laminar separation bubbles and should be handled by inverse mode,
-            // not by forcing transition.
-            
-            if trchek_result.transition {
-                // e^N transition detected
-                result.x_transition = trchek_result.xt;
+            // --- Forced transition check (XSTRIP) ---
+            // If user specified a forced transition location and this station
+            // has reached or passed it, force transition here.
+            let forced = x_forced.is_some_and(|xf| station.x >= xf && prev_station.x < xf);
+            if forced {
+                let xf = x_forced.unwrap();
+                if config.debug_trace {
+                    println!(
+                        "[march_surface] FORCED TRANSITION (xstrip) at station {}, x={:.4}, xiforc={:.4}",
+                        station_idx, station.x, xf
+                    );
+                }
+                is_laminar = false;
+                station.is_laminar = false;
+                station.is_turbulent = true;
+                result.x_transition = Some(xf);
                 result.transition_index = Some(station_idx + 2);
 
-                if station.is_turbulent {
-                    is_laminar = false;
-                } else {
-                    is_laminar = false;
-                    station.is_laminar = false;
-                    station.is_turbulent = true;
+                let mut initial_guess = prev_station.clone();
+                initial_guess.x = station.x;
+                initial_guess.u = station.u;
+                initial_guess.ampl = station.ampl;
+                initial_guess.ctau = 0.05;
 
-                    let mut initial_guess = prev_station.clone();
-                    initial_guess.x = station.x;
-                    initial_guess.u = station.u;
-                    initial_guess.ampl = station.ampl;
-                    // XFOIL xbl.f line 895: IF(IBL.EQ.ITRAN(IS)) CTI = 0.05
-                    initial_guess.ctau = 0.05;
+                let (turb_station, _turb_converged, _turb_dmax) = newton_solve_station_transition(
+                    prev_station,
+                    Some(&initial_guess),
+                    x[i],
+                    station.u,
+                    re,
+                    msq,
+                    false,
+                    false,
+                    config.ncrit,
+                    config.max_iter,
+                    config.tolerance,
+                    config.hlmax,
+                    config.htmax,
+                    x_forced,
+                    Some(side),
+                    Some(station_idx + 2),
+                );
 
-                    let (turb_station, _turb_converged, _turb_dmax) = newton_solve_station_transition(
-                        prev_station,
-                        Some(&initial_guess),
-                        x[i],
-                        station.u,
-                        re,
-                        msq,
-                        false,
-                        false,
-                        config.ncrit,
-                        config.max_iter,
-                        config.tolerance,
-                        config.hlmax,
-                        config.htmax,
-                        None,
-                        Some(side),
-                        Some(station_idx + 2),
+                station = turb_station;
+            } else {
+                // --- Natural transition via e^N method ---
+                let trchek_result = trchek2_stations(
+                    prev_station.x,
+                    station.x,
+                    prev_station.hk,
+                    prev_station.theta,
+                    prev_station.r_theta,
+                    prev_station.delta_star,
+                    prev_station.u,
+                    prev_station.ampl,
+                    station.hk,
+                    station.theta,
+                    station.r_theta,
+                    station.delta_star,
+                    station.u,
+                    config.ncrit,
+                    msq,
+                    re,
+                );
+                station.ampl = trchek_result.ampl2;
+                emit_trchek2_station_iter(
+                    side,
+                    station_idx + 2,
+                    prev_station,
+                    &station,
+                    &trchek_result,
+                    config.ncrit,
+                );
+
+                if config.debug_trace && station.ampl > 0.1 && station.ampl < 12.0 {
+                    println!(
+                        "[march_surface] i={} x={:.4} Hk={:.3} Rθ={:.0} N={:.3} dN={:.4}",
+                        i,
+                        station.x,
+                        station.hk,
+                        station.r_theta,
+                        station.ampl,
+                        station.ampl - prev_station.ampl
                     );
+                }
 
-                    station = turb_station;
-                    station.ampl = trchek_result.ampl2;
+                // e^N transition: only triggers when amplification exceeds Ncrit.
+                // XFOIL does NOT force transition based on Hk threshold.
+                if trchek_result.transition {
+                    // If forced transition is set but further downstream, e^N wins
+                    result.x_transition = trchek_result.xt;
+                    result.transition_index = Some(station_idx + 2);
+
+                    if station.is_turbulent {
+                        is_laminar = false;
+                    } else {
+                        is_laminar = false;
+                        station.is_laminar = false;
+                        station.is_turbulent = true;
+
+                        let mut initial_guess = prev_station.clone();
+                        initial_guess.x = station.x;
+                        initial_guess.u = station.u;
+                        initial_guess.ampl = station.ampl;
+                        initial_guess.ctau = 0.05;
+
+                        let (turb_station, _turb_converged, _turb_dmax) = newton_solve_station_transition(
+                            prev_station,
+                            Some(&initial_guess),
+                            x[i],
+                            station.u,
+                            re,
+                            msq,
+                            false,
+                            false,
+                            config.ncrit,
+                            config.max_iter,
+                            config.tolerance,
+                            config.hlmax,
+                            config.htmax,
+                            x_forced,
+                            Some(side),
+                            Some(station_idx + 2),
+                        );
+
+                        station = turb_station;
+                        station.ampl = trchek_result.ampl2;
+                    }
                 }
             }
         }
 
-        // NOTE: XFOIL does NOT force transition when Hk > hlmax. It only uses hlmax
-        // to switch between direct and inverse mode. When Hk exceeds hlmax, the solver
-        // switches to inverse mode where Hk is prescribed, allowing laminar flow to
-        // continue through near-separation conditions. Transition is only triggered by:
-        // 1. e^N method (amplification exceeds Ncrit)
-        // 2. Forced transition at a user-specified location (XIFORC)
-        //
-        // In XFOIL, when no forced transition strip is set (XSTRIP >= 1.0), XIFORC is
-        // set to the TE arc length. This means laminar flow is forced to transition
-        // at the trailing edge if no natural transition has occurred.
-        //
-        // Implement forced TE transition: if this is the last airfoil station (or very
-        // close to TE, arc length > 0.98) and still laminar, force transition.
-        // This matches XFOIL's behavior of forcing transition at TE.
+        // Forced TE transition: if no user-specified strip or e^N has triggered,
+        // and we've reached the trailing edge, force transition here.
+        // This matches XFOIL's default XIFORC = TE arc length.
         let at_surface_te = station.x >= surface_te_x - 1e-9;
         if is_laminar && at_surface_te && result.x_transition.is_none() {
             if config.debug_trace {
@@ -2565,28 +2628,12 @@ pub fn march_mixed_du(
             let mut transition_detected_this_iter = false;
 
             // TRCHEK inside Newton loop (XFOIL xbl.f:1081-1088)
+            // Also check for user-specified forced transition (XSTRIP/XIFORC).
             if !simi && !turb && !wake && !tran {
-                let trchek = trchek2_stations(
-                    prev.x,
-                    stations[i].x,
-                    prev.hk,
-                    prev.theta,
-                    prev.r_theta,
-                    prev.delta_star,
-                    prev.u,
-                    prev.ampl,
-                    stations[i].hk,
-                    stations[i].theta,
-                    stations[i].r_theta,
-                    stations[i].delta_star,
-                    stations[i].u,
-                    config.ncrit,
-                    msq,
-                    re,
-                );
-                ami = trchek.ampl2;
-                stations[i].ampl = ami;
-                if trchek.transition {
+                // Forced transition check: if user set a strip and this station
+                // has reached or passed it, force transition immediately.
+                let forced = config.xiforc.is_some_and(|xf| stations[i].x >= xf && prev.x < xf);
+                if forced {
                     let tr_full = trchek2_full(
                         prev.x,
                         stations[i].x,
@@ -2602,7 +2649,7 @@ pub fn march_mixed_du(
                         stations[i].r_theta,
                         prev.ampl,
                         config.ncrit,
-                        None,
+                        config.xiforc,
                         msq,
                         re,
                     );
@@ -2613,6 +2660,56 @@ pub fn march_mixed_du(
                     if itbl == 0 {
                         stations[i].ctau = 0.03;
                         cti = 0.03;
+                    }
+                } else {
+                    let trchek = trchek2_stations(
+                        prev.x,
+                        stations[i].x,
+                        prev.hk,
+                        prev.theta,
+                        prev.r_theta,
+                        prev.delta_star,
+                        prev.u,
+                        prev.ampl,
+                        stations[i].hk,
+                        stations[i].theta,
+                        stations[i].r_theta,
+                        stations[i].delta_star,
+                        stations[i].u,
+                        config.ncrit,
+                        msq,
+                        re,
+                    );
+                    ami = trchek.ampl2;
+                    stations[i].ampl = ami;
+                    if trchek.transition {
+                        let tr_full = trchek2_full(
+                            prev.x,
+                            stations[i].x,
+                            prev.theta,
+                            stations[i].theta,
+                            prev.delta_star,
+                            stations[i].delta_star,
+                            prev.u,
+                            stations[i].u,
+                            prev.hk,
+                            stations[i].hk,
+                            prev.r_theta,
+                            stations[i].r_theta,
+                            prev.ampl,
+                            config.ncrit,
+                            config.xiforc,
+                            msq,
+                            re,
+                        );
+                        trchek_hold = Some(tr_full);
+                        transition_detected_this_iter = true;
+                        tran = true;
+                        flow_type = FlowType::Turbulent;
+                        if itbl == 0 {
+                            stations[i].ctau = 0.03;
+                            cti = 0.03;
+                        }
                     }
                 }
             }

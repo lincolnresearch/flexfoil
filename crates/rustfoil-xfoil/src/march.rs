@@ -229,11 +229,45 @@ pub fn blpini(state: &mut XfoilState, _reynolds: f64) {
 }
 
 // ---------------------------------------------------------------------------
+// XSTRIP → XIFORC conversion for XfoilBlRow arrays
+// ---------------------------------------------------------------------------
+
+/// Convert an XSTRIP value (x/c chord fraction) to an arc-length coordinate
+/// by interpolating the BL row arrays.  Returns TE arc length when
+/// `xstrip >= 1.0` (no forced transition).
+pub fn xstrip_to_xiforc_rows(rows: &[XfoilBlRow], iblte: usize, xstrip: f64) -> f64 {
+    let te_x = rows.get(iblte).map(|r| r.x).unwrap_or(1.0);
+    if xstrip >= 1.0 - 1e-9 || iblte < 2 {
+        return te_x;
+    }
+    for i in 1..=iblte.min(rows.len().saturating_sub(1)) {
+        let xc1 = rows[i - 1].x_coord;
+        let xc2 = rows[i].x_coord;
+        if (xc1 <= xstrip && xstrip <= xc2) || (xc2 <= xstrip && xstrip <= xc1) {
+            let dx = xc2 - xc1;
+            if dx.abs() < 1e-15 {
+                return rows[i - 1].x;
+            }
+            let frac = (xstrip - xc1) / dx;
+            return rows[i - 1].x + frac * (rows[i].x - rows[i - 1].x);
+        }
+    }
+    te_x
+}
+
+// ---------------------------------------------------------------------------
 // MRCHUE
 // ---------------------------------------------------------------------------
 
 /// MRCHUE: Direct-mode BL march with transition checking (xbl.f:584-986).
-pub fn mrchue(state: &mut XfoilState, reynolds: f64, ncrit: f64, iteration: usize) {
+pub fn mrchue(
+    state: &mut XfoilState,
+    reynolds: f64,
+    ncrit: f64,
+    iteration: usize,
+    xstrip_upper: f64,
+    xstrip_lower: f64,
+) {
     let msq = 0.0_f64;
 
     // Upper surface (IS=1): other side = lower (stale values)
@@ -241,7 +275,7 @@ pub fn mrchue(state: &mut XfoilState, reynolds: f64, ncrit: f64, iteration: usiz
     let (itran_u, xssitr_u) = march_ue_side(
         1,
         &mut state.upper_rows, state.nbl_upper, state.iblte_upper,
-        other_te, state.ante, reynolds, ncrit, msq, iteration,
+        other_te, state.ante, reynolds, ncrit, msq, iteration, xstrip_upper,
     );
     state.itran_upper = itran_u;
     state.xssitr_upper = xssitr_u;
@@ -251,7 +285,7 @@ pub fn mrchue(state: &mut XfoilState, reynolds: f64, ncrit: f64, iteration: usiz
     let (itran_l, xssitr_l) = march_ue_side(
         2,
         &mut state.lower_rows, state.nbl_lower, state.iblte_lower,
-        other_te, state.ante, reynolds, ncrit, msq, iteration,
+        other_te, state.ante, reynolds, ncrit, msq, iteration, xstrip_lower,
     );
     state.itran_lower = itran_l;
     state.xssitr_lower = xssitr_l;
@@ -285,6 +319,7 @@ fn march_ue_side(
     ncrit: f64,
     msq: f64,
     iteration: usize,
+    xstrip: f64,
 ) -> (usize, f64) {
     if nbl < 2 {
         return (iblte, 0.0);
@@ -293,7 +328,7 @@ fn march_ue_side(
     let mut itran = xfoil_ibl(iblte);
     let mut xssitr = 0.0;
     let mut turb = false;
-    let x_forced = rows.get(iblte).map(|row| row.x);
+    let x_forced = Some(xstrip_to_xiforc_rows(rows, iblte, xstrip));
 
     // ---- Similarity station init (IBL=2 = index 1) ----
     let xsi0 = rows[1].x.max(1e-12);
@@ -732,7 +767,14 @@ fn march_ue_side(
 // ---------------------------------------------------------------------------
 
 /// MRCHDU: Mixed Ue-Hk march with transition checking (xbl.f:990-1312).
-pub fn mrchdu(state: &mut XfoilState, reynolds: f64, ncrit: f64, iteration: usize) {
+pub fn mrchdu(
+    state: &mut XfoilState,
+    reynolds: f64,
+    ncrit: f64,
+    iteration: usize,
+    xstrip_upper: f64,
+    xstrip_lower: f64,
+) {
     let msq = 0.0_f64;
 
     // Upper surface
@@ -741,7 +783,7 @@ pub fn mrchdu(state: &mut XfoilState, reynolds: f64, ncrit: f64, iteration: usiz
     let (itran_u, xssitr_u) = march_du_side(
         1,
         &mut state.upper_rows, state.nbl_upper, state.iblte_upper,
-        other_te, state.ante, itrold_u, reynolds, ncrit, msq, iteration,
+        other_te, state.ante, itrold_u, reynolds, ncrit, msq, iteration, xstrip_upper,
     );
     state.itran_upper = itran_u;
     state.xssitr_upper = xssitr_u;
@@ -752,7 +794,7 @@ pub fn mrchdu(state: &mut XfoilState, reynolds: f64, ncrit: f64, iteration: usiz
     let (itran_l, xssitr_l) = march_du_side(
         2,
         &mut state.lower_rows, state.nbl_lower, state.iblte_lower,
-        other_te, state.ante, itrold_l, reynolds, ncrit, msq, iteration,
+        other_te, state.ante, itrold_l, reynolds, ncrit, msq, iteration, xstrip_lower,
     );
     state.itran_lower = itran_l;
     state.xssitr_lower = xssitr_l;
@@ -772,6 +814,7 @@ fn march_du_side(
     ncrit: f64,
     msq: f64,
     iteration: usize,
+    xstrip: f64,
 ) -> (usize, f64) {
     if nbl < 2 {
         return (iblte, 0.0);
@@ -785,7 +828,7 @@ fn march_du_side(
     let mut turb = false;
     let mut sens = 0.0_f64;
     let mut ami = rows[1].ctau;
-    let x_forced = rows.get(iblte).map(|row| row.x);
+    let x_forced = Some(xstrip_to_xiforc_rows(rows, iblte, xstrip));
 
     // Build station_1 from stored similarity station (index 1)
     let ft0 = flow_type_for(1, itrold, false);

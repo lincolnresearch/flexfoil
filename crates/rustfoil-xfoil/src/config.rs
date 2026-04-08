@@ -36,6 +36,12 @@ pub struct XfoilOptions {
     pub wake_length_chords: f64,
     pub operating_mode: OperatingMode,
     pub re_type: ReType,
+    /// Forced transition location on upper surface as x/c fraction (0–1).
+    /// Default 1.0 means no forced transition (use e^N method only).
+    pub xstrip_upper: f64,
+    /// Forced transition location on lower surface as x/c fraction (0–1).
+    /// Default 1.0 means no forced transition (use e^N method only).
+    pub xstrip_lower: f64,
 }
 
 impl Default for XfoilOptions {
@@ -49,6 +55,8 @@ impl Default for XfoilOptions {
             wake_length_chords: 1.0,
             operating_mode: OperatingMode::PrescribedAlpha,
             re_type: ReType::Type1,
+            xstrip_upper: 1.0,
+            xstrip_lower: 1.0,
         }
     }
 }
@@ -90,6 +98,12 @@ impl XfoilOptions {
         }
         if self.tolerance <= 0.0 {
             return Err("tolerance must be positive");
+        }
+        if !(0.0..=1.0).contains(&self.xstrip_upper) {
+            return Err("xstrip_upper must be in [0, 1]");
+        }
+        if !(0.0..=1.0).contains(&self.xstrip_lower) {
+            return Err("xstrip_lower must be in [0, 1]");
         }
         Ok(())
     }
@@ -153,5 +167,27 @@ mod tests {
         assert_eq!(ReType::default(), ReType::Type1);
         let o = XfoilOptions::default();
         assert_eq!(o.re_type, ReType::Type1);
+    }
+
+    #[test]
+    fn default_xstrip_is_1() {
+        let o = XfoilOptions::default();
+        assert_eq!(o.xstrip_upper, 1.0);
+        assert_eq!(o.xstrip_lower, 1.0);
+    }
+
+    #[test]
+    fn xstrip_validation() {
+        let mut o = XfoilOptions::default();
+        o.xstrip_upper = 0.3;
+        o.xstrip_lower = 0.5;
+        assert!(o.validate().is_ok());
+
+        o.xstrip_upper = -0.1;
+        assert!(o.validate().is_err());
+
+        o.xstrip_upper = 0.0;
+        o.xstrip_lower = 1.1;
+        assert!(o.validate().is_err());
     }
 }

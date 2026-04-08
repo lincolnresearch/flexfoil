@@ -174,7 +174,7 @@ pub fn solve_operating_point_from_state(
 
     for iter in 1..=options.max_iterations {
         let re_eff = options.effective_reynolds(state.cl);
-        let mut assembly = setbl(state, re_eff, options.ncrit, options.mach, iter);
+        let mut assembly = setbl(state, re_eff, options.ncrit, options.mach, iter, options.xstrip_upper, options.xstrip_lower);
         let solve = blsolv(state, &mut assembly, iter);
         update(
             state,
