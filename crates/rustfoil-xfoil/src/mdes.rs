@@ -265,7 +265,12 @@ fn mapgen(cp: &mut CirclePlane) {
     let dx = cp.xcold[1] - cp.xcold[0];
     let dy = cp.ycold[1] - cp.ycold[0];
     let qim0 = dx.atan2(-dy) + 0.5 * PI * (1.0 + cp.agte);
-    let qimoff = qim0 - cp.cn[0].im;
+    let mut qimoff = qim0 - cp.cn[0].im;
+    
+    // Phase wrapping correction (exact match to XFOIL MAPGEN)
+    while qimoff < -PI { qimoff += 2.0 * PI; }
+    while qimoff > PI { qimoff -= 2.0 * PI; }
+    
     cp.cn[0] += c(0.0, qimoff);
 
     piqsum(cp);
@@ -278,10 +283,10 @@ fn mapgen(cp: &mut CirclePlane) {
     // Newton iteration for TE gap
     for _iter in 0..10 {
         let residual = cp.zc[0] - cp.zc[nc - 1] - cp.dzte;
-        let jacobian = cp.zc_cn[0][0] - cp.zc_cn[nc - 1][0];
+        let jacobian = cp.zc_cn[0][1] - cp.zc_cn[nc - 1][1]; // FIX: Use m=1 (first harmonic)
         if jacobian.norm() < 1e-20 { break; }
         let dcn = residual / jacobian;
-        cp.cn[0] -= c(dcn.re, 0.0); // Only adjust real part of cn[1] (index 0 in 0-based Cn[1])
+        cp.cn[0] -= c(dcn.re, 0.0);
         // Actually we need to adjust cn[1] in XFOIL's 1-based indexing = cn[1] here
         // Let me re-check: MAPGEN uses NCN=1, M=1, so it adjusts CN(1) (the first harmonic)
         if cp.cn.len() > 1 {
@@ -394,12 +399,12 @@ fn scinit(cp: &mut CirclePlane, x: &[f64], y: &[f64]) -> Result<()> {
 
         // TE gap correction on cn[1]
         for _itgap in 0..5 {
-            zccalc(cp, 1);
+            zccalc(cp, 2); // FIX: Pass 2 to compute m=0 and m=1
             let zle = zlefind(&cp.zc, &cp.wc, nc, &cp.piq, cp.agte);
             let zte = 0.5 * (cp.zc[0] + cp.zc[nc - 1]);
             let dzwt = ((zte - zle).norm() / cp.chordz.norm()).max(1e-10);
-            if cp.zc_cn[0].is_empty() || cp.zc_cn[nc - 1].is_empty() { break; }
-            let denom = cp.zc_cn[0][0] - cp.zc_cn[nc - 1][0];
+            if cp.zc_cn[0].len() < 2 || cp.zc_cn[nc - 1].len() < 2 { break; }
+            let denom = cp.zc_cn[0][1] - cp.zc_cn[nc - 1][1]; // FIX: Use m=1
             if denom.norm() < 1e-20 { break; }
             let dcn = -(cp.zc[0] - cp.zc[nc - 1] - dzwt * cp.dzte) / denom;
             if cp.cn.len() > 1 {
@@ -475,13 +480,36 @@ fn cncalc(cp: &mut CirclePlane, qc: &[f64], lsymm: bool) {
         let sinw = 2.0 * (0.5 * cp.wc[ic]).sin();
         let sinwe = if sinw > 0.0 { sinw.powf(cp.agte) } else { 0.0 };
 
-        let pfun = if cosw.abs() < 1e-4 {
-            (sinwe / qc[ic].abs().max(1e-10)).abs()
+        if cosw.abs() < 1e-4 {
+            // Flag for interpolation to avoid 0/0 singularity at stagnation point
+            cp.piq[ic] = c(f64::NAN, 0.0);
         } else {
-            (cosw * sinwe / qc[ic]).abs().max(1e-30)
-        };
+            let pfun = (cosw * sinwe / qc[ic]).abs().max(1e-30);
+            cp.piq[ic] = c(pfun.ln(), 0.0);
+        }
+    }
 
-        cp.piq[ic] = c(pfun.ln(), 0.0);
+    // Interpolate NaN values across the stagnation point
+    for ic in 1..nc - 1 {
+        if cp.piq[ic].re.is_nan() {
+            let mut left = ic - 1;
+            while left > 0 && cp.piq[left].re.is_nan() { left -= 1; }
+            let mut right = ic + 1;
+            while right < nc - 1 && cp.piq[right].re.is_nan() { right += 1; }
+            
+            let w_left = cp.wc[left];
+            let w_right = cp.wc[right];
+            let p_left = cp.piq[left].re;
+            let p_right = cp.piq[right].re;
+            let w = cp.wc[ic];
+            
+            let p = if (w_right - w_left).abs() > 1e-12 {
+                p_left + (p_right - p_left) * (w - w_left) / (w_right - w_left)
+            } else {
+                p_left
+            };
+            cp.piq[ic] = c(p, 0.0);
+        }
     }
 
     // Extrapolate to TE
